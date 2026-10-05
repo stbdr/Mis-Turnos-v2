@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Registro de turnos</title>
+<meta name="theme-color" content="#11161d">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="back" href="index.html" aria-label="Volver al inicio">&larr;</a>
+    <h1>Registro de turnos</h1>
+  </div>
+
+  <div class="monthbar">
+    <button onclick="cambiarMes(-1)" aria-label="Mes anterior">&larr;</button>
+    <div class="label" id="mesLabel"></div>
+    <button onclick="cambiarMes(1)" aria-label="Mes siguiente">&rarr;</button>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="weekdays"><span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
+  <div class="grid" id="grid"></div>
+
+  <div class="legend">
+    <span><i class="M"></i>Mañana</span><span><i class="T"></i>Tarde</span>
+    <span><i class="N"></i>Noche</span><span><i class="MA"></i>Madrugada</span><span><i class="L"></i>Libre</span>
+  </div>
+  <div class="hint">Toca un día para elegir turno, empresa, buque y más.</div>
+</div>
+
+<div class="overlay" id="diaOverlay">
+  <div class="sheet">
+    <h2 id="diaTitulo">Día</h2>
+    <div class="dsub" id="diaSub"></div>
+    <div class="shiftpick" id="turnoPick"></div>
+    <label for="diaPuesto">Especialidad</label>
+    <select id="diaPuesto"></select>
+    <label for="diaEmpresa">Empresa</label>
+    <select id="diaEmpresa"></select>
+    <label for="diaBuque">Buque</label>
+    <input type="text" id="diaBuque" class="field" placeholder="Nombre del buque">
+    <div class="field-row">
+      <div><label for="diaMovs">Movimientos</label><input type="number" id="diaMovs" class="field" min="0" step="1" placeholder="0"></div>
+      <div><label for="diaSalario">Salario del día (€)</label><input type="number" id="diaSalario" class="field" min="0" step="0.01" placeholder="0.00"></div>
+    </div>
+    <label for="diaExtra">Extra (€)</label>
+    <input type="number" id="diaExtra" class="field" min="0" step="0.01" placeholder="0.00">
+    <label for="diaNota">Nota (opcional)</label>
+    <textarea id="diaNota" placeholder="Ej. cambio con un compañero, incidencia..."></textarea>
+    <label>Compañeros</label>
+    <div id="equipo"></div>
+    <datalist id="listaNombres"></datalist>
+    <datalist id="listaCensos"></datalist>
+    <div class="row">
+      <button class="btn-cancel" onclick="cerrarDia()">Cancelar</button>
+      <button class="btn-save" onclick="guardarDia()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script src="datos.js"></script>
+<script>
+const hoy = new Date();
+let anio = hoy.getFullYear(), mesVista = hoy.getMonth();
+let diaSel = null, turnoSel = '';
+const $ = id => document.getElementById(id);
+
+$('diaPuesto').innerHTML = Datos.PUESTOS.map(p => `<option value="${p}">${p}</option>`).join('');
+$('diaEmpresa').innerHTML = '<option value="">Sin especificar</option>' +
+  Datos.EMPRESAS.map(c => `<option value="${c}">${c}</option>`).join('');
+
+const ROLES = [['capataz','Capataz'],['apuntador','Apuntador'],['gruero1','Gruero 1'],['gruero2','Gruero 2'],['especialista','Especialista']];
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+$('equipo').innerHTML = ROLES.map(([k,t]) => `
+  <div class="equipo-rol">${t}</div>
+  <div class="equipo-campos">
+    <input class="field" id="eq_${k}_censo" list="listaCensos" inputmode="numeric" placeholder="Censo" autocomplete="off">
+    <input class="field" id="eq_${k}_nombre" list="listaNombres" placeholder="Nombre" autocomplete="off">
+  </div>`).join('');
+
+ROLES.forEach(([k]) => {
+  const cen = $('eq_'+k+'_censo'), nom = $('eq_'+k+'_nombre');
+  nom.addEventListener('input', () => { const c = Datos.porNombre(nom.value); if(c) cen.value = c.censo; });
+  cen.addEventListener('input', () => { const c = Datos.porCenso(cen.value); if(c) nom.value = c.nombre; });
+});
+
+function refrescarListas(){
+  $('listaNombres').innerHTML = Datos.companeros.map(c => `<option value="${esc(c.nombre)}"></option>`).join('');
+  $('listaCensos').innerHTML = Datos.companeros.map(c => `<option value="${esc(c.censo)}">${esc(c.nombre)}</option>`).join('');
+}
+refrescarListas();
+
+function cambiarMes(delta){
+  mesVista += delta;
+  if(mesVista < 0){ mesVista = 11; anio--; }
+  if(mesVista > 11){ mesVista = 0; anio++; }
+  pintar();
+}
+
+function pintar(){
+  $('mesLabel').textContent = Datos.MESES[mesVista] + ' ' + anio;
+  const datosMes = Datos.mes(anio, mesVista);
+  let offset = new Date(anio, mesVista, 1).getDay() - 1;
+  if(offset < 0) offset = 6;
+  const diasMes = new Date(anio, mesVista + 1, 0).getDate();
+
+  const grid = $('grid');
+  grid.innerHTML = '';
+  for(let i = 0; i < offset; i++){
+    const v = document.createElement('div'); v.className = 'day empty'; grid.appendChild(v);
+  }
+  for(let d = 1; d <= diasMes; d++){
+    const e = datosMes[d];
+    const turno = e ? e.shift : '';
+    const esHoy = anio === hoy.getFullYear() && mesVista === hoy.getMonth() && d === hoy.getDate();
+    const celda = document.createElement('div');
+    celda.className = 'day' + (turno ? ' ' + turno : '') + (esHoy ? ' today' : '');
+    celda.innerHTML = '<span class="num">' + d + '</span>' + (turno ? '<span class="tag">' + turno + '</span>' : '');
+    if(e && Datos.ABREV[e.company]){
+      const co = document.createElement('span'); co.className = 'co'; co.textContent = Datos.ABREV[e.company]; celda.appendChild(co);
+    }
+    if(e && (e.note || e.buque || e.movimientos || e.salario || e.extra)){
+      const p = document.createElement('span'); p.className = 'note-dot'; celda.appendChild(p);
+    }
+    celda.addEventListener('click', () => abrirDia(d));
+    grid.appendChild(celda);
+  }
+
+  const r = Datos.resumen(anio, mesVista);
+  $('stats').innerHTML = `
+    <div class="stat M"><div class="n">${r.cuenta.M}</div><div class="l">Mañana</div></div>
+    <div class="stat T"><div class="n">${r.cuenta.T}</div><div class="l">Tarde</div></div>
+    <div class="stat N"><div class="n">${r.cuenta.N}</div><div class="l">Noche</div></div>
+    <div class="stat MA"><div class="n">${r.cuenta.MA}</div><div class="l">Madrugada</div></div>
+    <div class="stat wide"><div class="n">${r.turnos}</div><div class="l">Turnos totales · ${r.cuenta.L} libres</div></div>
+    <div class="stat wide"><div class="n">${r.horas} h</div><div class="l">Horas del mes</div></div>`;
+}
+
+function abrirDia(d){
+  diaSel = d;
+  const e = Datos.dia(anio, mesVista, d) || {};
+  turnoSel = e.shift || '';
+  $('diaTitulo').textContent = 'Día ' + d;
+  $('diaSub').textContent = Datos.MESES[mesVista] + ' ' + anio;
+  $('diaPuesto').value = e.puesto || Datos.PUESTO_DEFECTO;
+  $('diaEmpresa').value = e.company || '';
+  $('diaBuque').value = e.buque || '';
+  $('diaMovs').value = e.movimientos || '';
+  $('diaSalario').value = e.salario || '';
+  $('diaExtra').value = e.extra || '';
+  $('diaNota').value = e.note || '';
+  ROLES.forEach(([k]) => {
+    const p = (e.equipo && e.equipo[k]) || {};
+    $('eq_'+k+'_censo').value = p.censo || '';
+    $('eq_'+k+'_nombre').value = p.nombre || '';
+  });
+
+  const pick = $('turnoPick');
+  pick.innerHTML = '';
+  Datos.TURNOS.forEach(s => {
+    const b = document.createElement('button');
+    b.textContent = Datos.NOMBRES[s];
+    b.className = s === turnoSel ? 'active ' + s : '';
+    b.onclick = () => {
+      turnoSel = turnoSel === s ? '' : s;
+      Array.from(pick.children).forEach(c => c.className = '');
+      if(turnoSel) b.className = 'active ' + turnoSel;
+    };
+    pick.appendChild(b);
+  });
+  $('diaOverlay').classList.add('open');
+}
+function cerrarDia(){ $('diaOverlay').classList.remove('open'); }
+
+function guardarDia(){
+  const nota = $('diaNota').value.trim(), empresa = $('diaEmpresa').value, buque = $('diaBuque').value.trim();
+  const movs = $('diaMovs').value, salario = $('diaSalario').value, extra = $('diaExtra').value;
+  const equipo = {};
+  ROLES.forEach(([k]) => {
+    const censo = $('eq_'+k+'_censo').value.trim(), nombre = $('eq_'+k+'_nombre').value.trim();
+    if(censo || nombre){ equipo[k] = {censo, nombre}; Datos.recordarCompanero(censo, nombre); }
+  });
+  if(!turnoSel && !(nota || empresa || buque || movs || salario || extra || Object.keys(equipo).length)){
+    Datos.ponerDia(anio, mesVista, diaSel, null);
+  } else {
+    Datos.ponerDia(anio, mesVista, diaSel, {
+      shift: turnoSel, puesto: $('diaPuesto').value, equipo: equipo, note: nota, company: empresa, buque: buque,
+      movimientos: movs ? parseFloat(movs) : '',
+      salario: salario ? parseFloat(salario) : '',
+      extra: extra ? parseFloat(extra) : ''
+    });
+  }
+  refrescarListas();
+  cerrarDia();
+  pintar();
+}
+
+pintar();
+</script>
+</body>
+</html>

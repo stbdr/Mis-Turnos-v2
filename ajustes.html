@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Ajustes</title>
+<meta name="theme-color" content="#11161d">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="back" href="index.html" aria-label="Volver al inicio">&larr;</a>
+    <h1>Ajustes</h1>
+  </div>
+
+  <div class="card">
+    <h2>Horas por turno</h2>
+    <div class="sub">De aquí salen las horas totales del mes. Se guarda solo.</div>
+    <div id="horas"></div>
+  </div>
+
+  <div class="card">
+    <h2>Retenciones por defecto</h2>
+    <div class="sub">Vienen rellenas en los meses que todavía no has tocado en Ingresos. Los meses ya guardados no cambian.</div>
+    <div id="retDef"></div>
+  </div>
+
+  <div class="card">
+    <h2>Tarifas por turno</h2>
+    <div class="sub">Elige la especialidad y edita sus importes.</div>
+    <select id="tPuesto" autocomplete="off"></select>
+    <div class="ret-fila" style="margin-top:6px;">
+      <div class="nom">Movimientos base</div>
+      <input class="field" id="tBase" type="text" inputmode="decimal" autocomplete="off">
+    </div>
+    <div class="tar-cab"><span>Tipo de turno</span><span>Tarifa</span><span>Unidad</span></div>
+    <div id="tFilas"></div>
+    <div class="sub" style="margin-top:8px;margin-bottom:0;">La columna Unidad es común a todas las especialidades.</div>
+  </div>
+
+  <div class="card">
+    <h2>Compañeros</h2>
+    <div class="sub" id="compResumen"></div>
+    <div id="compLista"></div>
+    <div class="comp-nuevo">
+      <input class="field" id="nuevoCenso" inputmode="numeric" placeholder="Censo" autocomplete="off">
+      <input class="field" id="nuevoNombre" placeholder="Nombre" autocomplete="off">
+    </div>
+    <button class="accion sec" onclick="anadirComp()">Añadir compañero</button>
+    <div class="note" id="compAviso" style="font-size:12px;color:var(--text-dim);margin-top:8px;"></div>
+  </div>
+</div>
+
+<script src="datos.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const num = v => { const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? 0 : n; };
+const f2 = n => (Math.round(n * 100) / 100).toFixed(2);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+/* ---------- Horas por turno ---------- */
+const TURNOS = ['M','T','N','MA'];
+$('horas').innerHTML = TURNOS.map(s => `
+  <div class="ret-fila"><div class="nom">${Datos.NOMBRES[s]}</div>
+  <div class="unidad" data-u="h"><input class="field" id="h_${s}" type="text" inputmode="decimal" autocomplete="off"></div></div>`).join('');
+TURNOS.forEach(s => {
+  const el = $('h_' + s);
+  el.value = (Datos.settings[s] && Datos.settings[s].horas !== undefined) ? Datos.settings[s].horas : 6;
+  el.addEventListener('input', () => {
+    if(!Datos.settings[s]) Datos.settings[s] = {};
+    Datos.settings[s].horas = num(el.value);
+    Datos.guardar();
+  });
+});
+
+/* ---------- Retenciones por defecto ---------- */
+const RET = [['irpfPct','IRPF habitual','%'],['ss','Seguridad social','€'],['fijo','Fijo por turnos','€'],['sindical','Cuota sindical','€'],
+  ['anticipos','Anticipos','€'],['prestamos','Préstamos','€'],['otras','Otras retenciones','€'],['telefono','Tarifa telefónica','€'],['seguro','Seguro médico','€']];
+const rd = Datos.retDefecto();
+$('retDef').innerHTML = RET.map(([k, t, u]) => `
+  <div class="ret-fila"><div class="nom">${t}</div>
+  <div class="unidad" data-u="${u}"><input class="field" id="rd_${k}" type="text" inputmode="decimal" autocomplete="off"></div></div>`).join('');
+RET.forEach(([k]) => {
+  const el = $('rd_' + k);
+  el.value = f2(rd[k]);
+  el.addEventListener('input', () => {
+    const o = {};
+    RET.forEach(([kk]) => o[kk] = num($('rd_' + kk).value));
+    Datos.settings.retDefecto = o;
+    Datos.guardar();
+  });
+});
+
+/* ---------- Tarifas ---------- */
+const T = Datos.tarifas();
+let puesto = Datos.PUESTO_DEFECTO;
+$('tPuesto').innerHTML = Datos.PUESTOS.map(p => `<option value="${p}">${p}</option>`).join('');
+$('tPuesto').value = puesto;
+
+function guardarTarifas(){ Datos.settings.tarifas = T; Datos.guardar(); }
+
+function pintarTarifas(){
+  const p = T.puestos[puesto];
+  $('tBase').value = p.base;
+  $('tFilas').innerHTML = Datos.TIPOS_TARIFA.map(([nombre, etq], i) => `
+    <div class="tar-fila">
+      <div class="nom">${nombre}${etq ? `<span class="etq ${etq === 'festivo' ? 'fes' : 'sab'}">${etq}</span>` : ''}</div>
+      <div class="unidad" data-u="€"><input class="field" data-k="v" data-i="${i}" type="text" inputmode="decimal" value="${f2(p.valores[i])}" autocomplete="off"></div>
+      <div class="unidad" data-u="€"><input class="field" data-k="u" data-i="${i}" type="text" inputmode="decimal" value="${f2(T.unidad[i])}" autocomplete="off"></div>
+    </div>`).join('');
+}
+$('tPuesto').addEventListener('change', () => { puesto = $('tPuesto').value; pintarTarifas(); });
+$('tBase').addEventListener('input', () => { T.puestos[puesto].base = num($('tBase').value); guardarTarifas(); });
+$('tFilas').addEventListener('input', ev => {
+  const el = ev.target;
+  if(!el.dataset.k) return;
+  const i = +el.dataset.i;
+  if(el.dataset.k === 'v') T.puestos[puesto].valores[i] = num(el.value);
+  else T.unidad[i] = num(el.value);
+  guardarTarifas();
+});
+pintarTarifas();
+
+/* ---------- Compañeros ---------- */
+let lista = [];
+function pintarComp(){
+  lista = Datos.companeros.slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  $('compResumen').textContent = lista.length
+    ? lista.length + (lista.length === 1 ? ' compañero guardado.' : ' compañeros guardados.') + ' Los cambios se guardan solos.'
+    : 'Todavía no hay compañeros. Se añaden solos al guardar un día con equipo, o puedes añadirlos aquí.';
+  $('compLista').innerHTML = lista.map((c, i) => `
+    <div class="comp-fila">
+      <input class="field" data-k="censo" data-i="${i}" value="${esc(c.censo)}" inputmode="numeric" placeholder="Censo" autocomplete="off">
+      <input class="field" data-k="nombre" data-i="${i}" value="${esc(c.nombre)}" placeholder="Nombre" autocomplete="off">
+      <button class="borrar" data-del="${i}" aria-label="Borrar compañero">&#10005;</button>
+    </div>`).join('');
+}
+$('compLista').addEventListener('change', ev => {
+  const el = ev.target;
+  if(!el.dataset.k) return;
+  const c = lista[+el.dataset.i], v = el.value.trim();
+  if(!v){ el.value = c[el.dataset.k]; return; }
+  c[el.dataset.k] = v;
+  Datos.guardar();
+});
+$('compLista').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-del]');
+  if(!b) return;
+  const c = lista[+b.dataset.del];
+  if(!confirm('¿Borrar a ' + c.nombre + ' (censo ' + c.censo + ') de la lista? Los días ya guardados no cambian.')) return;
+  const i = Datos.companeros.indexOf(c);
+  if(i >= 0) Datos.companeros.splice(i, 1);
+  Datos.guardar();
+  pintarComp();
+});
+function anadirComp(){
+  const censo = $('nuevoCenso').value.trim(), nombre = $('nuevoNombre').value.trim();
+  if(!censo || !nombre){ $('compAviso').textContent = 'Escribe el censo y el nombre.'; return; }
+  Datos.recordarCompanero(censo, nombre);
+  Datos.guardar();
+  $('nuevoCenso').value = ''; $('nuevoNombre').value = '';
+  $('compAviso').textContent = '';
+  pintarComp();
+}
+pintarComp();
+</script>
+</body>
+</html>

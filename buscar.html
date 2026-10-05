@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Buscar/Filtrar</title>
+<meta name="theme-color" content="#11161d">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="back" href="index.html" aria-label="Volver al inicio">&larr;</a>
+    <h1>Buscar/Filtrar</h1>
+    <button class="btn-limpiar" onclick="limpiar()">Limpiar</button>
+  </div>
+
+  <input type="text" id="q" class="field" placeholder="Buque, compañero o nota" autocomplete="off" oninput="pintar()">
+  <div class="filtros">
+    <select id="fEmpresa" autocomplete="off" onchange="pintar()"></select>
+    <select id="fTurno" autocomplete="off" onchange="pintar()"></select>
+    <select id="fPuesto" autocomplete="off" onchange="pintar()"></select>
+    <select id="fAnio" autocomplete="off" onchange="pintar()"></select>
+    <select id="fMes" autocomplete="off" onchange="pintar()"></select>
+  </div>
+
+  <div class="viewtoggle">
+    <button id="vtBuque" class="active" onclick="cambiarVista('buque')">Por buque</button>
+    <button id="vtDia" onclick="cambiarVista('dia')">Por día</button>
+  </div>
+
+  <div class="stats tres" id="resumen"></div>
+  <div id="res"></div>
+</div>
+
+<script src="datos.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const eur = n => n.toLocaleString('es-ES', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
+const imp = e => (parseFloat(e.salario) || 0) + (parseFloat(e.extra) || 0);
+const fecha = x => x.d + ' de ' + Datos.MESES[x.m] + ' ' + x.y;
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const ROLES = {capataz:'Capataz', apuntador:'Apuntador', gruero1:'Gruero 1', gruero2:'Gruero 2', especialista:'Especialista'};
+let vista = 'buque', grupos = [];
+
+// selectores
+const anios = [...new Set(Object.keys(Datos.data).map(k => +k.split('-')[0]).concat(new Date().getFullYear()))].sort((a,b) => b - a);
+$('fEmpresa').innerHTML = '<option value="">Todas las empresas</option>' + Datos.EMPRESAS.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+$('fTurno').innerHTML = '<option value="">Todos los turnos</option>' + ['M','T','N','MA'].map(s => `<option value="${s}">${Datos.NOMBRES[s]}</option>`).join('');
+$('fPuesto').innerHTML = '<option value="">Todas las especialidades</option>' + Datos.PUESTOS.map(p => `<option value="${p}">${p}</option>`).join('');
+$('fAnio').innerHTML = '<option value="">Todos los años</option>' + anios.map(a => `<option value="${a}">${a}</option>`).join('');
+$('fMes').innerHTML = '<option value="">Todos los meses</option>' + Datos.MESES.map((m,i) => `<option value="${i}">${cap(m)}</option>`).join('');
+
+function todos(){
+  const out = [];
+  Object.keys(Datos.data).forEach(k => {
+    const [y, m] = k.split('-').map(Number);
+    Object.entries(Datos.data[k]).forEach(([d, e]) => out.push({y, m: m - 1, d: +d, e}));
+  });
+  return out.sort((a,b) => (b.y - a.y) || (b.m - a.m) || (b.d - a.d));
+}
+
+function filtrar(){
+  const q = $('q').value.trim().toLowerCase();
+  const fe = $('fEmpresa').value, ft = $('fTurno').value, fp = $('fPuesto').value, fa = $('fAnio').value, fm = $('fMes').value;
+  return todos().filter(x => {
+    const e = x.e;
+    if(!e.shift || e.shift === 'L') return false;
+    if(fe && e.company !== fe) return false;
+    if(ft && e.shift !== ft) return false;
+    if(fp && (e.puesto || Datos.PUESTO_DEFECTO) !== fp) return false;
+    if(fa && x.y !== +fa) return false;
+    if(fm !== '' && x.m !== +fm) return false;
+    if(q){
+      const eq = Object.values(e.equipo || {}).map(p => (p.nombre || '') + ' ' + (p.censo || '')).join(' ');
+      if(!((e.buque || '') + ' ' + (e.note || '') + ' ' + eq).toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function cambiarVista(v){
+  vista = v;
+  $('vtBuque').className = v === 'buque' ? 'active' : '';
+  $('vtDia').className = v === 'dia' ? 'active' : '';
+  pintar();
+}
+
+function detalle(x, conBuque){
+  const e = x.e;
+  return [Datos.NOMBRES[e.shift], e.puesto || Datos.PUESTO_DEFECTO, e.company, conBuque ? e.buque : '',
+    e.movimientos ? e.movimientos + ' mov.' : ''].filter(Boolean).map(esc).join(' · ');
+}
+function equipoTxt(e){
+  return Object.entries(e.equipo || {}).filter(([k, p]) => p.nombre || p.censo)
+    .map(([k, p]) => (ROLES[k] || k) + ': ' + (p.nombre || '') + (p.censo ? ' (' + p.censo + ')' : '')).join(' · ');
+}
+
+function pintar(){
+  const hayBusqueda = $('q').value.trim() || ['fEmpresa','fTurno','fPuesto','fAnio','fMes'].some(id => $(id).value !== '');
+  if(!hayBusqueda){
+    $('resumen').innerHTML = '';
+    $('res').innerHTML = '<div class="vacio">Escribe un buque, un compañero o una nota, o elige un filtro para empezar a buscar.</div>';
+    return;
+  }
+  const lista = filtrar();
+  const base = vista === 'buque' ? lista.filter(x => (x.e.buque || '').trim()) : lista;
+  const total = base.reduce((s, x) => s + imp(x.e), 0);
+  const media = base.length ? total / base.length : 0;
+  $('resumen').innerHTML = `
+    <div class="stat"><div class="n">${base.length}</div><div class="l">Servicios</div></div>
+    <div class="stat"><div class="n">${eur(media)}</div><div class="l">Media por servicio</div></div>
+    <div class="stat"><div class="n">${eur(total)}</div><div class="l">Ingresos</div></div>`;
+
+  if(!base.length){
+    const hayDatos = todos().length > 0;
+    $('res').innerHTML = '<div class="vacio">' + (hayDatos ? 'No se ha encontrado nada con esa búsqueda.' : 'Todavía no hay turnos registrados.') + '</div>';
+    return;
+  }
+
+  if(vista === 'dia'){
+    $('res').innerHTML = base.map(x => {
+      const eq = equipoTxt(x.e);
+      return `<div class="item">
+        <div class="it-top"><span>${fecha(x)}</span><span>${imp(x.e) ? eur(imp(x.e)) : ''}</span></div>
+        <div class="it-sub">${detalle(x, true)}</div>
+        ${eq ? `<div class="it-sub">${esc(eq)}</div>` : ''}
+        ${x.e.note ? `<div class="it-nota">${esc(x.e.note)}</div>` : ''}
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  // por buque
+  const mapa = new Map();
+  base.forEach(x => {
+    const k = x.e.buque.trim().toLowerCase();
+    if(!mapa.has(k)) mapa.set(k, {nombre: x.e.buque.trim(), servicios: []});
+    mapa.get(k).servicios.push(x);
+  });
+  grupos = [...mapa.values()].sort((a,b) => b.servicios.length - a.servicios.length || a.nombre.localeCompare(b.nombre));
+  $('res').innerHTML = grupos.map((g, i) => {
+    const m = g.servicios.reduce((s, x) => s + (parseFloat(x.e.movimientos) || 0), 0);
+    const t = g.servicios.reduce((s, x) => s + imp(x.e), 0);
+    const n = g.servicios.length;
+    return `<div class="item buque">
+      <div class="bh" data-i="${i}">
+        <div class="it-top"><span>${esc(g.nombre)}</span><span>${t ? eur(t) : ''}</span></div>
+        <div class="it-sub">${n} ${n === 1 ? 'servicio' : 'servicios'}${m ? ' · ' + m + ' mov.' : ''} · último ${fecha(g.servicios[0])}</div>
+      </div>
+      <div class="bd" hidden>
+        ${g.servicios.map(x => `<div class="srv"><b>${fecha(x)}</b><br><span class="it-sub">${detalle(x, false)}${imp(x.e) ? ' · ' + eur(imp(x.e)) : ''}</span></div>`).join('')}
+        <div class="acciones">
+          <button data-acc="cap" data-i="${i}">Capacidad</button>
+          <button data-acc="pos" data-i="${i}">Posición</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+$('res').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-acc]');
+  if(b){
+    const nombre = grupos[+b.dataset.i].nombre;
+    const sufijo = b.dataset.acc === 'pos' ? 'buque MarineTraffic posición actual' : 'buque capacidad TEU contenedores';
+    window.open('https://www.google.com/search?q=' + encodeURIComponent(nombre + ' ' + sufijo), '_blank');
+    return;
+  }
+  const h = ev.target.closest('.bh');
+  if(h){ const bd = h.nextElementSibling; bd.hidden = !bd.hidden; }
+});
+
+// Siempre se abre limpia, también al volver con "atrás"
+function limpiar(){
+  $('q').value = '';
+  ['fEmpresa','fTurno','fPuesto','fAnio','fMes'].forEach(id => $(id).value = '');
+  cambiarVista('buque');
+}
+window.addEventListener('pageshow', limpiar);
+limpiar();
+</script>
+</body>
+</html>

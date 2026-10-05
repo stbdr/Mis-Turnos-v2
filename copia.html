@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Copia de seguridad</title>
+<meta name="theme-color" content="#11161d">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="back" href="index.html" aria-label="Volver al inicio">&larr;</a>
+    <h1>Copia de seguridad</h1>
+  </div>
+
+  <div class="card">
+    <h2>Exportar copia</h2>
+    <p id="actual"></p>
+    <p style="margin-top:8px;">Guarda un archivo con todos tus turnos, retenciones y compañeros. Tus datos solo están en este dispositivo, así que conviene exportar de vez en cuando.</p>
+    <button class="accion" onclick="exportar()">Exportar copia</button>
+  </div>
+
+  <div class="card">
+    <h2>Importar copia</h2>
+    <p>Elige un archivo de copia, también sirve el de la app antigua. Los datos que tengas ahora se sustituirán por los del archivo.</p>
+    <button class="accion sec" onclick="document.getElementById('archivo').click()">Importar copia</button>
+    <input type="file" id="archivo" accept="application/json,.json" style="display:none" onchange="importar(event)">
+  </div>
+
+  <div class="card">
+    <h2>Exportar un mes</h2>
+    <p>Elige el mes y descárgalo como informe en PDF o como hoja de Excel.</p>
+    <div class="filtros" style="margin-top:12px;">
+      <select id="exMes" autocomplete="off"></select>
+      <select id="exAnio" autocomplete="off"></select>
+    </div>
+    <div class="dos">
+      <button class="accion sec" onclick="exportarPDF()">Exportar PDF</button>
+      <button class="accion sec" id="btnExcel" onclick="exportarExcel()">Exportar Excel</button>
+    </div>
+    <p style="margin-top:10px;font-size:12px;">El PDF se abre en una pestaña nueva, desde donde lo guardas con Imprimir. El Excel necesita conexión a internet.</p>
+  </div>
+
+  <div class="estado" id="estado"></div>
+</div>
+
+<script src="datos.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const plural = (n, s, p) => n + ' ' + (n === 1 ? s : p);
+
+function estado(texto, tipo){
+  const e = $('estado');
+  e.textContent = texto;
+  e.className = 'estado ' + tipo;
+}
+
+function resumenActual(){
+  const c = Datos.contar(Datos.data);
+  $('actual').textContent = c.dias
+    ? 'Ahora mismo tienes ' + plural(c.dias, 'día registrado', 'días registrados') + ' en ' + plural(c.meses, 'mes', 'meses') +
+      ' y ' + plural(Datos.companeros.length, 'compañero', 'compañeros') + '.'
+    : 'Todavía no tienes días registrados en este dispositivo.';
+}
+
+function exportar(){
+  const c = Datos.contar(Datos.data);
+  if(!c.dias){ estado('No hay datos registrados para exportar.', 'err'); return; }
+  const blob = new Blob([JSON.stringify(Datos.exportar(), null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'turnos_copia_' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  estado('Copia exportada con ' + plural(c.dias, 'día', 'días') + '.', 'ok');
+}
+
+function importar(ev){
+  const f = ev.target.files[0];
+  ev.target.value = '';
+  if(!f) return;
+  const lector = new FileReader();
+  lector.onload = () => {
+    let p;
+    try{
+      p = JSON.parse(lector.result);
+      if(!p || !p.data || typeof p.data !== 'object') throw new Error('formato');
+    }catch(err){
+      estado('El archivo no es una copia válida.', 'err');
+      return;
+    }
+    const c = Datos.contar(p.data);
+    const msg = 'El archivo contiene ' + plural(c.dias, 'día', 'días') + ' en ' + plural(c.meses, 'mes', 'meses') +
+      '. Los datos actuales se sustituirán. ¿Importar?';
+    if(!confirm(msg)){ estado('Importación cancelada.', 'ok'); return; }
+    try{
+      Datos.importar(p);
+      resumenActual();
+      estado('Copia importada: ' + plural(c.dias, 'día', 'días') + ' en ' + plural(c.meses, 'mes', 'meses') + '.', 'ok');
+    }catch(err){
+      estado('No se ha podido importar la copia.', 'err');
+    }
+  };
+  lector.onerror = () => estado('No se ha podido leer el archivo.', 'err');
+  lector.readAsText(f);
+}
+
+
+// ---------- Exportar un mes: PDF y Excel ----------
+const ROLES = {capataz:'Capataz', apuntador:'Apuntador', gruero1:'Gruero 1', gruero2:'Gruero 2', especialista:'Especialista'};
+const CAMPOS_RET = [['ss','Seguridad social'],['fijo','Fijo por turnos'],['sindical','Cuota sindical'],['anticipos','Anticipos'],
+  ['prestamos','Préstamos'],['otras','Otras retenciones'],['telefono','Tarifa telefónica'],['seguro','Seguro médico']];
+const num = v => parseFloat(String(v).replace(',', '.')) || 0;
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const eur = n => n.toLocaleString('es-ES', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+const anios = [...new Set(Object.keys(Datos.data).map(k => +k.split('-')[0]).concat(new Date().getFullYear()))].sort((a,b) => b - a);
+$('exMes').innerHTML = Datos.MESES.map((n, i) => `<option value="${i}">${cap(n)}</option>`).join('');
+$('exAnio').innerHTML = anios.map(a => `<option value="${a}">${a}</option>`).join('');
+$('exMes').value = new Date().getMonth();
+$('exAnio').value = new Date().getFullYear();
+
+function filas(y, m){
+  const md = Datos.mes(y, m);
+  return Object.keys(md).map(Number).sort((a,b) => a - b).map(d => ({d, e: md[d]}))
+    .filter(({e}) => e.shift || e.note || e.buque || e.movimientos || e.salario || e.extra);
+}
+const equipoTxt = e => Object.entries(e.equipo || {}).filter(([k, p]) => p.nombre || p.censo)
+  .map(([k, p]) => (ROLES[k] || k) + ': ' + (p.nombre || '') + (p.censo ? ' (' + p.censo + ')' : '')).join(' / ');
+
+function htmlInforme(y, m){
+  const f = filas(y, m), r = Datos.resumen(y, m);
+  const bruto = r.salario + r.extra;
+  const colores = {M:'#ffb020', T:'#3fb6c2', N:'#6c7ae0', MA:'#c15fd6'};
+  const turnos = ['M','T','N','MA'];
+  const nTurno = {M:0,T:0,N:0,MA:0}, impTurno = {M:0,T:0,N:0,MA:0}, impEmp = {};
+  Datos.EMPRESAS.forEach(c => impEmp[c] = 0);
+  f.forEach(({e}) => {
+    if(!e.shift || e.shift === 'L') return;
+    const i = (parseFloat(e.salario) || 0) + (parseFloat(e.extra) || 0);
+    nTurno[e.shift]++; impTurno[e.shift] += i;
+    if(e.company in impEmp) impEmp[e.company] += i;
+  });
+  const barras = items => {
+    const max = Math.max(1, ...items.map(i => i.v));
+    return items.map(i => `<div class="barrow"><div class="blabel">${esc(i.l)}</div>
+      <div class="btrack"><div class="bfill" style="width:${i.v / max * 100}%;background:${i.c};"></div></div>
+      <div class="bval">${esc(i.t)}</div></div>`).join('');
+  };
+  const barrasTurno = barras(turnos.map(s => ({l: Datos.NOMBRES[s], v: nTurno[s], t: String(nTurno[s]), c: colores[s]})));
+  const barrasEmp = barras(Datos.EMPRESAS.map(c => ({l: c, v: impEmp[c], t: eur(impEmp[c]), c: '#ffb020'})));
+  const barrasSal = barras(turnos.map(s => ({l: Datos.NOMBRES[s], v: impTurno[s], t: eur(impTurno[s]), c: colores[s]})));
+
+  const filasHtml = f.map(({d, e}) => {
+    const eq = equipoTxt(e);
+    return `<tr><td>${d}</td><td>${e.shift ? Datos.NOMBRES[e.shift] : '—'}</td><td>${esc(e.puesto || Datos.PUESTO_DEFECTO)}</td>
+      <td>${esc(e.company || '—')}</td><td>${esc(e.buque || '—')}</td><td>${e.movimientos || '—'}</td>
+      <td>${e.salario ? eur(parseFloat(e.salario)) : '—'}</td><td>${e.extra ? eur(parseFloat(e.extra)) : '—'}</td>
+      <td>${esc(e.note || '')}${eq ? `<div class="eq">${esc(eq)}</div>` : ''}</td></tr>`;
+  }).join('');
+
+  const rec = Datos.retenciones[Datos.clave(y, m)];
+  let retHtml = '';
+  if(rec){
+    const irpf = rec.irpfModo === 'pct' ? bruto * num(rec.irpfPct) / 100 : num(rec.irpfEur);
+    const lineas = [['IRPF' + (rec.irpfModo === 'pct' ? ' (' + String(num(rec.irpfPct)).replace('.', ',') + ' %)' : ''), irpf]]
+      .concat(CAMPOS_RET.map(([k, t]) => [t, num(rec[k])])).filter(([t, v]) => v > 0);
+    const total = lineas.reduce((s, [t, v]) => s + v, 0);
+    retHtml = `<h2 class="section">Retenciones</h2><div class="summary">
+      ${lineas.map(([t, v]) => `<b>${esc(t)}:</b> ${eur(v)}<br>`).join('')}
+      <b>Total retenciones:</b> ${eur(total)}<br><b>Salario neto:</b> ${eur(bruto - total)}</div>`;
+  }
+
+  const mes = Datos.MESES[m] + ' ' + y;
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Mis Turnos — ${mes}</title>
+  <style>
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    body{font-family:Georgia,'Times New Roman',serif;color:#1c2530;background:#f4f1ea;margin:0;padding:36px 18px;}
+    .sheet{max-width:760px;margin:0 auto;background:#fff;border-radius:4px;padding:44px 40px;}
+    .masthead{border-bottom:2px solid #1c2530;padding-bottom:16px;margin-bottom:26px;display:flex;justify-content:space-between;align-items:flex-end;}
+    .masthead h1{font-size:26px;margin:0;font-weight:400;}
+    .masthead .mo{font-family:Arial,sans-serif;font-size:12px;color:#8a6d1f;text-transform:uppercase;letter-spacing:1.4px;font-weight:700;text-align:right;}
+    .masthead .mo span{display:block;font-family:Georgia,serif;font-size:15px;color:#1c2530;text-transform:capitalize;letter-spacing:0;font-weight:400;margin-top:3px;}
+    .hero{background:#1c2530;color:#fff;border-radius:6px;padding:20px 24px;display:flex;justify-content:space-between;margin-bottom:30px;font-family:Arial,sans-serif;}
+    .hero .hl{font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;color:#cdd6e0;margin-bottom:4px;}
+    .hero .hv{font-size:24px;font-weight:700;}
+    h2.section{font-family:Arial,sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#8a6d1f;margin:0 0 14px;padding-bottom:6px;border-bottom:1px solid #e6e0d2;}
+    .charts{display:grid;grid-template-columns:1fr 1fr;gap:34px;margin-bottom:30px;}
+    .ct{font-family:Arial,sans-serif;font-size:10px;color:#8a6d1f;margin-bottom:8px;font-weight:700;}
+    .barrow{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-family:Arial,sans-serif;}
+    .blabel{width:76px;font-size:10.5px;color:#555;flex-shrink:0;}
+    .btrack{flex:1;background:#f0ece2;border-radius:5px;height:12px;overflow:hidden;}
+    .bfill{height:100%;border-radius:5px;}
+    .bval{width:70px;text-align:right;font-size:10.5px;font-weight:700;flex-shrink:0;}
+    table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:10.5px;margin-bottom:30px;}
+    th{background:#1c2530;color:#fff;font-weight:600;text-transform:uppercase;font-size:9px;letter-spacing:.4px;padding:8px 6px;text-align:left;}
+    td{padding:7px 6px;border-bottom:1px solid #ece7db;vertical-align:top;}
+    tbody tr:nth-child(even){background:#faf8f2;}
+    .eq{font-size:9.5px;color:#777;margin-top:3px;}
+    .summary{font-family:Arial,sans-serif;font-size:12px;color:#333;line-height:2;margin-bottom:28px;}
+    .foot{margin-top:30px;padding-top:14px;border-top:1px solid #e6e0d2;font-family:Arial,sans-serif;font-size:9.5px;color:#999;display:flex;justify-content:space-between;}
+    .pbtn{display:block;margin:22px auto 0;padding:11px 22px;font-size:13px;border:none;border-radius:8px;background:#ffb020;color:#221600;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;}
+    @media print{.pbtn{display:none;} body{background:#fff;padding:0;} .sheet{padding:0;max-width:100%;}}
+  </style></head><body><div class="sheet">
+    <div class="masthead"><h1>Mis Turnos</h1><div class="mo">Informe mensual<span>${mes}</span></div></div>
+    <div class="hero">
+      <div><div class="hl">Turnos totales</div><div class="hv">${r.turnos}</div></div>
+      <div><div class="hl">Horas totales</div><div class="hv">${r.horas} h</div></div>
+      <div style="text-align:right;"><div class="hl">Ingresos (bruto)</div><div class="hv" style="color:#ffb020;">${eur(bruto)}</div></div>
+    </div>
+    <h2 class="section">Resumen visual</h2>
+    <div class="charts">
+      <div><div class="ct">TURNOS POR TIPO</div>${barrasTurno}</div>
+      <div><div class="ct">INGRESOS POR EMPRESA</div>${barrasEmp}</div>
+    </div>
+    <h2 class="section">Detalle por día</h2>
+    <table><thead><tr><th>Día</th><th>Turno</th><th>Espec.</th><th>Empresa</th><th>Buque</th><th>Mov.</th><th>Salario</th><th>Extra</th><th>Notas</th></tr></thead>
+    <tbody>${filasHtml}</tbody></table>
+    <h2 class="section">Resumen económico</h2>
+    <div class="summary"><b>Movimientos totales:</b> ${r.movimientos}<br>
+      <b>Salario:</b> ${eur(r.salario)} &nbsp;·&nbsp; <b>Extras:</b> ${eur(r.extra)} &nbsp;·&nbsp; <b>Total bruto:</b> ${eur(bruto)}</div>
+    ${retHtml}
+    <h2 class="section">Salario por turno</h2>
+    <div class="charts"><div class="summary">${turnos.map(s => `De <b>${Datos.NOMBRES[s].toLowerCase()}</b> tienes ${nTurno[s]} turno${nTurno[s] === 1 ? '' : 's'}: ${eur(impTurno[s])}.<br>`).join('')}</div><div>${barrasSal}</div></div>
+    <div class="foot"><span>Mis Turnos · Puerto de La Luz</span><span>Generado el ${new Date().toLocaleDateString('es-ES')}</span></div>
+    <button class="pbtn" onclick="window.print()">Imprimir / Guardar como PDF</button>
+  </div></body></html>`;
+}
+
+function exportarPDF(){
+  const y = +$('exAnio').value, m = +$('exMes').value;
+  if(!filas(y, m).length){ estado('No hay datos registrados en ' + Datos.MESES[m] + ' ' + y + '.', 'err'); return; }
+  const win = window.open('', '_blank');
+  if(!win){ estado('El navegador ha bloqueado la pestaña nueva. Permítela para esta página e inténtalo de nuevo.', 'err'); return; }
+  win.document.open();
+  win.document.write(htmlInforme(y, m));
+  win.document.close();
+  estado('Informe de ' + Datos.MESES[m] + ' ' + y + ' abierto en una pestaña nueva.', 'ok');
+}
+
+function cargarScript(src){
+  return new Promise((ok, ko) => {
+    if(document.querySelector('script[data-src="' + src + '"]')){ ok(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.setAttribute('data-src', src);
+    s.onload = () => ok();
+    s.onerror = () => ko(new Error('No se pudo cargar la librería'));
+    document.head.appendChild(s);
+  });
+}
+
+async function exportarExcel(){
+  const y = +$('exAnio').value, m = +$('exMes').value;
+  const f = filas(y, m);
+  if(!f.length){ estado('No hay datos registrados en ' + Datos.MESES[m] + ' ' + y + '.', 'err'); return; }
+  const btn = $('btnExcel'), txt = btn.textContent;
+  btn.textContent = 'Generando...'; btn.disabled = true;
+  try{
+    if(!window.XlsxPopulate) await cargarScript('https://cdn.jsdelivr.net/npm/xlsx-populate/browser/xlsx-populate.min.js');
+    const cabecera = ['Día','Turno','Especialidad','Empresa','Buque','Movimientos','Salario','Extra','Compañeros','Nota'];
+    const filasXls = f.map(({d, e}) => [d, e.shift ? Datos.NOMBRES[e.shift] : '', e.puesto || Datos.PUESTO_DEFECTO, e.company || '', e.buque || '',
+      e.movimientos ? parseFloat(e.movimientos) : '', e.salario ? parseFloat(e.salario) : '', e.extra ? parseFloat(e.extra) : '',
+      equipoTxt(e), e.note || '']);
+    const libro = await XlsxPopulate.fromBlankAsync();
+    const hoja = libro.sheet(0);
+    hoja.name('Turnos');
+    hoja.cell('A1').value([cabecera, ...filasXls]);
+    hoja.range('A1:J1').style({bold: true, fontColor: 'FFFFFF', fill: '1C2530', horizontalAlignment: 'center'});
+    hoja.range('A2:J' + (filasXls.length + 1)).style({horizontalAlignment: 'left'});
+    [6, 11, 13, 10, 18, 12, 10, 10, 40, 26].forEach((w, i) => hoja.column('ABCDEFGHIJ'[i]).width(w));
+    hoja.row(1).height(20);
+    const blob = await libro.outputAsync();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'turnos_' + Datos.MESES[m] + '_' + y + '.xlsx';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    estado('Excel de ' + Datos.MESES[m] + ' ' + y + ' generado.', 'ok');
+  }catch(err){
+    estado('No se ha podido generar el Excel. Comprueba que tienes conexión a internet e inténtalo de nuevo.', 'err');
+  }finally{
+    btn.textContent = txt; btn.disabled = false;
+  }
+}
+
+resumenActual();
+</script>
+</body>
+</html>

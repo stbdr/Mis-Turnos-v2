@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Ingresos</title>
+<meta name="theme-color" content="#11161d">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="back" href="index.html" aria-label="Volver al inicio">&larr;</a>
+    <h1>Ingresos</h1>
+  </div>
+
+  <div class="monthbar">
+    <button onclick="cambiarMes(-1)" aria-label="Mes anterior">&larr;</button>
+    <div class="label" id="mesLabel"></div>
+    <button onclick="cambiarMes(1)" aria-label="Mes siguiente">&rarr;</button>
+  </div>
+
+  <div class="stats dos" id="resumen"></div>
+
+  <div class="card">
+    <h2>Retenciones</h2>
+    <div class="sub">Cantidades en euros. Se guardan solas.</div>
+    <div id="retCampos"></div>
+  </div>
+  <div class="stats dos" id="retTotales"></div>
+
+  <div class="dash-section"><h3>Por empresa</h3><div id="porEmpresa"></div></div>
+  <div class="dash-section"><h3>Por turno</h3><div id="porTurno"></div></div>
+  <div class="dash-section"><h3>Por especialidad</h3><div id="porPuesto"></div></div>
+
+  <div class="dash-section"><h3 id="anioTitulo">Año</h3><div class="stats dos" id="anio"></div></div>
+</div>
+
+<script src="datos.js"></script>
+<script>
+const hoy = new Date();
+let anio = hoy.getFullYear(), mesVista = hoy.getMonth();
+const $ = id => document.getElementById(id);
+const eur = n => n.toLocaleString('es-ES', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
+const COLOR = {M:'var(--amber)', T:'var(--teal)', N:'var(--indigo)', MA:'var(--violet)'};
+
+function cambiarMes(delta){
+  mesVista += delta;
+  if(mesVista < 0){ mesVista = 11; anio--; }
+  if(mesVista > 11){ mesVista = 0; anio++; }
+  pintar();
+}
+
+function barras(filas, color){
+  const max = Math.max(1, ...filas.map(f => f.valor));
+  return filas.map(f => `
+    <div class="barrow">
+      <div class="blabel">${f.etiqueta}</div>
+      <div class="btrack"><div class="bfill" style="width:${f.valor / max * 100}%;background:${f.color || color};"></div></div>
+      <div class="bval">${eur(f.valor)}</div>
+    </div>`).join('');
+}
+
+const CAMPOS = [['ss','Seguridad social'],['fijo','Fijo por turnos'],['sindical','Cuota sindical'],['anticipos','Anticipos'],
+  ['prestamos','Préstamos'],['otras','Otras retenciones'],['telefono','Tarifa telefónica'],['seguro','Seguro médico']];
+const DEF = Datos.retDefecto();
+const num = v => parseFloat(String(v).replace(',', '.')) || 0;
+const f2 = n => (Math.round(n * 100) / 100).toFixed(2);
+let modoIrpf = 'pct';
+
+$('retCampos').innerHTML = `
+  <div class="ret-fila irpf">
+    <div class="nom">IRPF</div>
+    <div class="unidad" data-u="%"><input class="field" id="ret_irpfPct" type="text" inputmode="decimal" autocomplete="off"></div>
+    <div class="unidad" data-u="€"><input class="field" id="ret_irpfEur" type="text" inputmode="decimal" autocomplete="off"></div>
+  </div>` + CAMPOS.map(([k, t]) => `
+  <div class="ret-fila">
+    <div class="nom">${t}</div>
+    <div class="unidad" data-u="€"><input class="field" id="ret_${k}" type="text" inputmode="decimal" autocomplete="off"></div>
+  </div>`).join('');
+
+const brutoMes = () => { const r = Datos.resumen(anio, mesVista); return r.salario + r.extra; };
+const irpfEurDe = (rec, bruto) => rec.irpfModo === 'pct' ? bruto * num(rec.irpfPct) / 100 : num(rec.irpfEur);
+const totalRet = (rec, bruto) => irpfEurDe(rec, bruto) + CAMPOS.reduce((s, [k]) => s + num(rec[k]), 0);
+
+function leerRet(){
+  const o = {irpfPct: num($('ret_irpfPct').value), irpfEur: num($('ret_irpfEur').value), irpfModo: modoIrpf};
+  CAMPOS.forEach(([k]) => o[k] = num($('ret_' + k).value));
+  return o;
+}
+
+function totales(){
+  const bruto = brutoMes(), rec = leerRet();
+  const total = totalRet(rec, bruto);
+  $('retTotales').innerHTML = `
+    <div class="stat"><div class="n">${eur(total)}</div><div class="l">Total retenciones</div></div>
+    <div class="stat"><div class="n" style="color:var(--amber);">${eur(bruto - total)}</div><div class="l">Salario neto</div></div>`;
+}
+
+function alEditar(origen){
+  const bruto = brutoMes();
+  if(origen === 'pct'){ modoIrpf = 'pct'; $('ret_irpfEur').value = f2(bruto * num($('ret_irpfPct').value) / 100); }
+  if(origen === 'eur'){ modoIrpf = 'eur'; $('ret_irpfPct').value = bruto > 0 ? f2(num($('ret_irpfEur').value) / bruto * 100) : ''; }
+  Datos.retenciones[Datos.clave(anio, mesVista)] = leerRet();
+  Datos.guardar();
+  totales();
+  pintarAnio();
+}
+$('ret_irpfPct').addEventListener('input', () => alEditar('pct'));
+$('ret_irpfEur').addEventListener('input', () => alEditar('eur'));
+CAMPOS.forEach(([k]) => $('ret_' + k).addEventListener('input', () => alEditar('otro')));
+
+function cargarRet(){
+  const bruto = brutoMes();
+  const rec = Datos.retenciones[Datos.clave(anio, mesVista)] || {irpfEur:0, irpfModo:'pct', ...DEF};
+  modoIrpf = rec.irpfModo || 'pct';
+  const eurIrpf = irpfEurDe(rec, bruto);
+  $('ret_irpfPct').value = modoIrpf === 'pct' ? f2(num(rec.irpfPct)) : (bruto > 0 ? f2(eurIrpf / bruto * 100) : '0.00');
+  $('ret_irpfEur').value = f2(eurIrpf);
+  CAMPOS.forEach(([k]) => $('ret_' + k).value = f2(rec[k] !== undefined ? num(rec[k]) : DEF[k]));
+}
+
+function pintar(){
+  $('mesLabel').textContent = Datos.MESES[mesVista] + ' ' + anio;
+  const r = Datos.resumen(anio, mesVista);
+
+  $('resumen').innerHTML = `
+    <div class="stat"><div class="n">${eur(r.salario)}</div><div class="l">Salario</div></div>
+    <div class="stat"><div class="n">${eur(r.extra)}</div><div class="l">Extras</div></div>
+    <div class="stat full"><div class="n">${eur(r.salario + r.extra)}</div><div class="l">Total del mes (bruto)</div></div>`;
+
+  cargarRet();
+  totales();
+
+  // desgloses
+  const empresas = {}, turnos = {M:0,T:0,N:0,MA:0}, puestos = {};
+  Datos.EMPRESAS.forEach(c => empresas[c] = 0);
+  Datos.PUESTOS.forEach(p => puestos[p] = 0);
+  let hayDatos = false;
+  Object.values(Datos.mes(anio, mesVista)).forEach(e => {
+    if(!e.shift || e.shift === 'L') return;
+    const imp = (parseFloat(e.salario) || 0) + (parseFloat(e.extra) || 0);
+    hayDatos = true;
+    if(e.company in empresas) empresas[e.company] += imp;
+    if(e.shift in turnos) turnos[e.shift] += imp;
+    const p = e.puesto || Datos.PUESTO_DEFECTO;
+    if(p in puestos) puestos[p] += imp;
+  });
+  const vacio = '<div class="vacio">Todavía no hay turnos registrados este mes.</div>';
+  $('porEmpresa').innerHTML = hayDatos ? barras(Datos.EMPRESAS.map(c => ({etiqueta:c, valor:empresas[c]})), 'var(--amber)') : vacio;
+  $('porTurno').innerHTML = hayDatos ? barras(['M','T','N','MA'].map(s => ({etiqueta:Datos.NOMBRES[s], valor:turnos[s], color:COLOR[s]})), 'var(--amber)') : vacio;
+  $('porPuesto').innerHTML = hayDatos ? barras(Datos.PUESTOS.map(p => ({etiqueta:p, valor:puestos[p]})), 'var(--teal)') : vacio;
+
+  pintarAnio();
+}
+
+function pintarAnio(){
+  let brutoAnio = 0, netoAnio = 0, mesesNeto = 0;
+  for(let m = 0; m < 12; m++){
+    const x = Datos.resumen(anio, m);
+    brutoAnio += x.salario + x.extra;
+    const rec = Datos.retenciones[Datos.clave(anio, m)];
+    if(rec){ netoAnio += (x.salario + x.extra) - totalRet(rec, x.salario + x.extra); mesesNeto++; }
+  }
+  $('anioTitulo').textContent = 'Año ' + anio;
+  $('anio').innerHTML = `
+    <div class="stat"><div class="n">${eur(brutoAnio)}</div><div class="l">Bruto del año</div></div>
+    <div class="stat"><div class="n">${mesesNeto ? eur(netoAnio) : '—'}</div><div class="l">Neto del año${mesesNeto ? ' (' + mesesNeto + (mesesNeto === 1 ? ' mes' : ' meses') + ')' : ''}</div></div>`;
+}
+
+pintar();
+</script>
+</body>
+</html>
