@@ -1,4 +1,4 @@
-const CACHE_NAME = "mis-turnos-v3";
+const CACHE_NAME = "turno2-v1";
 
 /* Páginas y archivos de la app. Si añades una página nueva, ponla aquí. */
 const APP_SHELL = [
@@ -29,7 +29,7 @@ self.addEventListener("install", event => {
 
 self.addEventListener("activate", event => {
   event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+    caches.keys().then(keys => Promise.all(keys.filter(k => (k.startsWith("turno2-") && k !== CACHE_NAME) || k === "mis-turnos-v3").map(k => caches.delete(k))))
   );
   self.clients.claim();
 });
