@@ -2,8 +2,8 @@
   "name": "Mis Turnos 2",
   "short_name": "Turnos 2",
   "description": "Gestión personal de turnos de trabajo",
-  "start_url": "./",
-  "scope": "./",
+  "start_url": "/Mis-Turno-v2/",
+  "scope": "/Mis-Turno-v2/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#11161d",
@@ -23,5 +23,5 @@
       "purpose": "any maskable"
     }
   ],
-  "id": "mis-turnos-v2"
+  "id": "/Mis-Turno-v2/"
 }
