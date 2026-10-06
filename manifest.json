@@ -1,7 +1,7 @@
 {
   "name": "Mis Turnos 2",
   "short_name": "Turnos 2",
-  "description": "Gestión prsonal de turnos de trabajo",
+  "description": "Gestión personal de turnos de trabajo",
   "start_url": "/Mis-Turnos-v2/",
   "scope": "/Mis-Turnos-v2/",
   "display": "standalone",
