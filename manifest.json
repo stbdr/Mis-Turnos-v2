@@ -1,9 +1,9 @@
 {
-  "name": "Mis Turnos 2",
-  "short_name": "Turnos 2",
+  "name": "Mis Turnos",
+  "short_name": "Mis Turnos",
   "description": "Gestión personal de turnos de trabajo",
-  "start_url": "/Mis-Turnos-v2/",
-  "scope": "/Mis-Turnos-v2/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#11161d",
@@ -22,6 +22,5 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ],
-  "id": "https://stbdr.github.io/Mis-Turnos-v2/"
+  ]
 }
