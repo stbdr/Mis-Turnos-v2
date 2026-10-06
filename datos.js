@@ -1,6 +1,15 @@
 /* Datos compartidos: guardado, constantes y cálculos. Lo usan todas las páginas. */
 const Datos = (() => {
-  const K = {data:'turnos_data_v2', settings:'turnos_settings_v2', neto:'turnos_neto_v1', companeros:'turnos_companeros_v1', retenciones:'turnos_retenciones_v1'};
+  const K = {data:'turnos2_data', settings:'turnos2_settings', neto:'turnos2_neto', companeros:'turnos2_companeros', retenciones:'turnos2_retenciones'};
+  // Claves que usaba antes (compartidas con la app antigua). Se copian una sola vez a las nuevas.
+  const K_ANTIGUAS = {data:'turnos_data_v2', settings:'turnos_settings_v2', neto:'turnos_neto_v1', companeros:'turnos_companeros_v1', retenciones:'turnos_retenciones_v1'};
+  try{
+    Object.keys(K).forEach(n => {
+      if(localStorage.getItem(K[n]) === null && localStorage.getItem(K_ANTIGUAS[n]) !== null){
+        localStorage.setItem(K[n], localStorage.getItem(K_ANTIGUAS[n]));
+      }
+    });
+  }catch(e){}
   const TURNOS = ['M','T','N','MA','L'];
   const NOMBRES = {M:'Mañana', T:'Tarde', N:'Noche', MA:'Madrugada', L:'Libre'};
   const EMPRESAS = ['OPCSA','La Luz','Gesport'];
