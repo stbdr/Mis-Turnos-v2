@@ -1,4 +1,4 @@
-const CACHE_NAME = "mis-turnos-v3";
+const CACHE_NAME = "mis-turnos-v4";
 
 /* Páginas y archivos de la app. Si añades una página nueva, ponla aquí. */
 const APP_SHELL = [
@@ -12,6 +12,7 @@ const APP_SHELL = [
   "./ajustes.html",
   "./estilo.css",
   "./datos.js",
+  "./nav.js",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png"

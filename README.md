@@ -3,7 +3,7 @@
 App instalable para llevar el registro de turnos, ingresos y retenciones. Funciona sin conexión después de la primera visita.
 
 ## Páginas
-- index.html: portada con los botones de cada sección.
+- index.html: portada con el resumen del mes (turnos, media por turno y salario) y los botones de cada sección.
 - registro.html: calendario y ficha de cada día (turno, especialidad, empresa, buque, salario, compañeros).
 - estadisticas.html: turnos, horas y medias por mes y año.
 - ingresos.html: salario bruto, retenciones, neto y totales del año.
@@ -14,11 +14,12 @@ App instalable para llevar el registro de turnos, ingresos y retenciones. Funcio
 ## Archivos compartidos
 - estilo.css: aspecto de todas las páginas.
 - datos.js: guardado de datos y cálculos comunes.
+- nav.js: barra de navegación inferior, común a todas las páginas (los botones se editan en la lista ITEMS).
 - manifest.json y service-worker.js: instalación y funcionamiento sin conexión.
 - icons/: iconos de la aplicación (icon-192.png e icon-512.png).
 
 ## Añadir una página nueva
-Crea la página, enlázala desde index.html y añádela a la lista APP_SHELL de service-worker.js.
+Crea la página, enlázala desde index.html, carga datos.js y nav.js al final de la página, y añádela a la lista APP_SHELL de service-worker.js.
 
 ## Datos
 Los turnos se guardan en el almacenamiento del navegador de cada dispositivo. No hay servidor ni sincronización: usa Copia de seguridad para pasar los datos de un dispositivo a otro.
